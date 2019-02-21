@@ -1,9 +1,8 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 
+
 # define functions
-
-
 def linear(x, a=1, b=0):
     return a * float(x) + b
 
@@ -15,9 +14,8 @@ def subtract(x, y):
 def division(x, y):
     return float(x) / float(y)
 
+
 # define constants
-
-
 STOCK = 'stock'
 FLOW = 'flow'
 VARIABLE = 'variable'
@@ -28,16 +26,16 @@ DIVISION = division
 
 
 class Structure(object):
-    def __init__(self, simulation_time=20, dt=0.25):
-        self.sfd = nx.MultiDiGraph(simulation_time=simulation_time, dt=dt)  # model parameters as graph's attributes
+    def __init__(self):
+        self.sfd = nx.MultiDiGraph()
 
-    def add_element(self, name, element_type, function=None, value=None):
+    def add_element(self, element_name, element_type, function=None, value=None):
         # this 'function' is a list, containing the function it self and its parameters
         # this 'value' is also a list, containing historical value throughout this simulation
-        self.sfd.add_node(name, element_type=element_type, function=function, value=value)
+        self.sfd.add_node(element_name, element_type=element_type, function=function, value=value)
 
-    def add_causality(self, from_element, to_element, function=None):
-        self.sfd.add_edge(from_element, to_element, function)
+    def add_causality(self, from_element, to_element):
+        self.sfd.add_edge(from_element, to_element)
 
     def display_elements(self):
         print('All elements in this SFD:')
@@ -73,7 +71,7 @@ class Structure(object):
             self.sfd.nodes[name]['value'].append(new_value)  # add this new value to this node's value list
             return new_value  # return the new value to where it was called
 
-    def step(self):
+    def step(self, dt=0.25):
         flows_dt = dict()  # have a dictionary of flows and their values in this dt, to be added to stocks afterward.
 
         # find all flows in the model
@@ -83,7 +81,7 @@ class Structure(object):
 
         # calculate flows
         for flow in flows_dt.keys():
-            flows_dt[flow] = self.sfd.graph['dt'] * self.calculate(flow)
+            flows_dt[flow] = dt * self.calculate(flow)
         print('All flows dt:', flows_dt)
 
         # calculating changes in stocks
@@ -106,49 +104,48 @@ class Structure(object):
 
 
 class Session(object):
-    def __init__(self, simulation_time=13, dt=0.25):
-        self.model = Structure(simulation_time, dt)
+    def __init__(self):
+        self.simulation_time = 13
+        self.dt = 0.25
+        self.structures = dict()
+        self.add_structure()
 
-        self.simulation_time = self.model.sfd.graph['simulation_time']
-        self.dt = self.model.sfd.graph['dt']
+    def add_structure(self, structure_name='default'):
+        self.structures[structure_name] = Structure()
 
-        self.maximum_steps = int(self.simulation_time/self.dt)
+    # Set the model to a first order negative feedback loop
+    def first_order_negative(self, structure_name='default'):
+        self.structures[structure_name].add_element('stock0', STOCK, value=[100])
+        self.structures[structure_name].add_element('flow0', FLOW, function=[DIVISION, 'gap0', 'at0'], value=list())
+        self.structures[structure_name].add_causality('flow0', 'stock0')
 
-        self.model.add_element('stock0', STOCK, value=[100])
-        self.model.add_element('flow0', FLOW, function=[DIVISION, 'gap0', 'at0'], value=list())
-        self.model.add_causality('flow0', 'stock0')
+        self.structures[structure_name].add_element('goal0', PARAMETER, value=[20])
+        self.structures[structure_name].add_element('gap0', VARIABLE, function=[SUBTRACT, 'goal0', 'stock0'], value=list())
+        self.structures[structure_name].add_causality('stock0', 'gap0')
+        self.structures[structure_name].add_causality('goal0', 'gap0')
 
-        self.model.add_element('goal0', PARAMETER, value=[20])
-        self.model.add_element('gap0', VARIABLE, function=[SUBTRACT, 'goal0', 'stock0'], value=list())
-        self.model.add_causality('stock0', 'gap0')
-        self.model.add_causality('goal0', 'gap0')
+        self.structures[structure_name].add_element('at0', PARAMETER, value=[5])
+        self.structures[structure_name].add_causality('gap0', 'flow0')
+        self.structures[structure_name].add_causality('at0', 'flow0')
 
-        self.model.add_element('at0', PARAMETER, value=[5])
-        self.model.add_causality('gap0', 'flow0')
-        self.model.add_causality('at0', 'flow0')
-
-        self.model.display_elements()
-        self.model.display_element('stock0')
-        self.model.display_element('flow0')
-        self.model.display_causalities()
-        self.model.display_causality('flow0', 'stock0')
-
-    def run(self, steps=0):  # run a simulation
-        if steps == 0:  # determine how many steps to run; if not specified, use maximum steps
-            total_steps = self.maximum_steps
+    def simulate(self, structure_name='default', simulation_time=13, dt=0.25):
+        self.simulation_time = simulation_time
+        self.dt = dt
+        if simulation_time == 0:  # determine how many steps to run; if not specified, use maximum steps
+            total_steps = self.structures[structure_name].maximum_steps
         else:
-            total_steps = steps
+            total_steps = int(simulation_time/dt)
 
         # main iteration
         for i in range(total_steps):
             # stock_behavior.append(structure0.sfd.nodes['stock0']['value'])
             print('\nExecuting Step {} :\n'.format(i))
-            self.model.step()
+            self.structures[structure_name].step(dt)
 
     # Draw graphs
-    def draw_graphs(self, names=None):
-        if names == None:
-            names = list(self.model.sfd.nodes)
+    def draw_graphs(self, structure_name='default', names=None):
+        if names is None:
+            names = list(self.structures[structure_name].sfd.nodes)
 
         plt.figure(figsize=(10, 5))
         plt.subplot(121)
@@ -160,35 +157,36 @@ class Session(object):
             # set the range of axis based on this element's behavior
             # 0 -> end of period (time), 0 -> 100 (y range)
             try:
-                name_minimum = min(self.model.sfd.nodes[name]['value'])
+                name_minimum = min(self.structures[structure_name].sfd.nodes[name]['value'])
             except:  # if this element is a constant, there's no min
-                name_minimum = self.model.sfd.nodes[name]['value'][-1]
+                name_minimum = self.structures[structure_name].sfd.nodes[name]['value'][-1]
             if name_minimum < y_axis_minimum:
                 y_axis_minimum = name_minimum
 
             try:
-                name_maximum = max(self.model.sfd.nodes[name]['value'])
+                name_maximum = max(self.structures[structure_name].sfd.nodes[name]['value'])
             except:  # if this element is a constant, there's no max
-                name_maximum = self.model.sfd.nodes[name]['value'][-1]
+                name_maximum = self.structures[structure_name].sfd.nodes[name]['value'][-1]
             if name_maximum > y_axis_maximum:
                 y_axis_maximum = name_maximum
 
             plt.axis([0, self.simulation_time, y_axis_minimum, y_axis_maximum])
-            plt.plot(self.model.sfd.nodes[name]['value'], label=name)
+            plt.plot(self.structures[structure_name].sfd.nodes[name]['value'], label=name)
         plt.legend()
 
         plt.subplot(122)
         # labels = nx.get_node_attributes(structure0.sfd, 'value')
         # nx.draw(structure0.sfd, labels=labels)
-        nx.draw(self.model.sfd, with_labels=True)
+        nx.draw(self.structures[structure_name].sfd, with_labels=True)
         plt.show()
 
 
 def main():
-    sess0 = Session(simulation_time=80, dt=0.25)
-    sess0.run()
-    sess0.draw_graphs(['stock0', 'flow0'])
-    
+    sess0 = Session()
+    sess0.first_order_negative()
+    sess0.simulate(simulation_time=80)
+    sess0.draw_graphs(names=['stock0', 'flow0'])
+
 
 if __name__ == '__main__':
     main()

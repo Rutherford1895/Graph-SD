@@ -1,10 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 
-STOCK = 'stock'
-FLOW = 'flow'
-VARIABLE = 'variable'
-PARAMETER = 'parameter'
+# define functions
 
 
 def linear(x, a=1, b=0):
@@ -18,17 +15,26 @@ def subtract(x, y):
 def division(x, y):
     return float(x) / float(y)
 
+# define constants
 
+
+STOCK = 'stock'
+FLOW = 'flow'
+VARIABLE = 'variable'
+PARAMETER = 'parameter'
 LINEAR = linear
 SUBTRACT = subtract
 DIVISION = division
 
 
 class Structure(object):
-    def __init__(self):
+    def __init__(self, simulation_time=20, dt=0.25):
         self.sfd = nx.MultiDiGraph()
-        self.simulation_time = 20
-        self.dt = 0.25
+        self.simulation_time = simulation_time
+        self.dt = dt
+
+    def simulation_parameter(self):
+        return [self.simulation_time, self.dt]
 
     def add_element(self, name, element_type, function=None, value=None):
         # this 'function' is a list, containing the function it self and its parameters
@@ -55,7 +61,7 @@ class Structure(object):
 
     # !!!!!!!!!!!!!!!!!!!!!! #
     def calculate(self, name):
-        if self.sfd.nodes[name]['value'] != None:
+        if self.sfd.nodes[name]['value'] is not None:
             return self.sfd.nodes[name]['value']
         else:  # it's not a constant value but a function
             params = self.sfd.nodes[name]['function'][1:]
@@ -95,7 +101,7 @@ class Structure(object):
             self.sfd.nodes[stock]['value'] += affected_stocks[stock]
 
 
-structure0 = Structure()
+structure0 = Structure(simulation_time=80, dt=0.25)
 
 structure0.add_element('stock0', STOCK, value=100)
 structure0.add_element('flow0', FLOW, function=[DIVISION, 'gap0', 'at0'])
@@ -118,15 +124,29 @@ structure0.display_causalities()
 structure0.display_causality('flow0', 'stock0')
 
 # Run a simulation
-simulation_steps = int(structure0.simulation_time/structure0.dt)
-stock_behavior = list()
+simulation_steps = int(structure0.simulation_parameter()[0]/structure0.simulation_parameter()[1])
+stock_behavior = [structure0.sfd.nodes['stock0']['value']]
 for i in range(simulation_steps):
+    stock_behavior.append(structure0.sfd.nodes['stock0']['value'])
     print('\nExecuting Step {} :\n'.format(i))
     structure0.step()
     # structure0.display_elements()
-    stock_behavior.append(structure0.sfd.nodes['stock0']['value'])
+
+stock_behavior.append(structure0.sfd.nodes['stock0']['value'])
 
 print('\nStock Behavior:', stock_behavior)
 
-plt.plot(stock_behavior)
+# Draw the behavior graph
+plt.figure(figsize=(10, 5))
+plt.subplot(121)
+plt.xlabel('Time')
+plt.ylabel('Stock Behavior')
+plt.axis([0, structure0.simulation_parameter()[0], 0, 100])  # 0 -> end of period (time), 0 -> 100 (y range)
+plt.plot(stock_behavior, label='Stock behavior')
+plt.legend()
+
+plt.subplot(122)
+#labels = nx.get_node_attributes(structure0.sfd, 'value')
+#nx.draw(structure0.sfd, labels=labels)
+nx.draw(structure0.sfd, with_labels=True)
 plt.show()

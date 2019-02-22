@@ -7,12 +7,21 @@ def linear(x, a=1, b=0):
     return a * float(x) + b
 
 
+LINEAR = linear
+
+
 def subtract(x, y):
     return float(x) - float(y)
 
 
+SUBTRACT = subtract
+
+
 def division(x, y):
     return float(x) / float(y)
+
+
+DIVISION = division
 
 
 # define constants
@@ -20,9 +29,7 @@ STOCK = 'stock'
 FLOW = 'flow'
 VARIABLE = 'variable'
 PARAMETER = 'parameter'
-LINEAR = linear
-SUBTRACT = subtract
-DIVISION = division
+CONNECTOR = 'connector'
 
 
 class Structure(object):
@@ -115,23 +122,47 @@ class Session(object):
 
     # Set the model to a first order negative feedback loop
     def first_order_negative(self, structure_name='default'):
-        self.add_stock(name='stock0', equation=[100])
-        self.add_flow(name='flow0', equation=[DIVISION, 'gap0', 'at0'], flow_to='stock0')
-        self.add_aux('goal0', equation=[20])
-        self.add_aux('gap0', equation=[SUBTRACT, 'goal0', 'stock0'])
-        self.add_connector(0, 'stock0', 'gap0')
-        self.add_connector(1, 'goal0', 'gap0')
-        self.add_aux('at0', equation=[5])
-        self.add_connector(2, 'gap0', 'flow0')
-        self.add_connector(3, 'at0', 'flow0')
+        # adding a structure that has been pre-defined using multi-dimensional arrays.
+        self.add_elements_batch([
+            # type,     name,       value/equation/angle            from,       to,         x,      y,      pts,
+            [STOCK,     'stock0',   [100],                          None,       None,       489,    245,    None],
+            [FLOW,      'flow0',    [DIVISION, 'gap0', 'at0'],      None,       'stock0',   381,    245,    None],
+            [PARAMETER, 'goal0',    [20],                           None,       None,       363,    351,    None],
+            [VARIABLE,  'gap0',     [SUBTRACT, 'goal0', 'stock0'],  None,       None,       413,    312,    None],
+            [PARAMETER, 'at0',      [5],                            None,       None,       323,    177,    None],
+            [CONNECTOR, '0',        246,                           'stock0',   'gap0',      0,      0,      None],
+            [CONNECTOR, '1',        353,                           'goal0',    'gap0',      0,      0,      None],
+            [CONNECTOR, '2',        148,                           'gap0',     'flow0',     0,      0,      None],
+            [CONNECTOR, '3',        311,                           'at0',      'flow0',     0,      0,      None]
+            ])
+
+    # Add elements to a structure in a batch (something like a script)
+    # Enable using of multi-dimensional arrays.
+    def add_elements_batch(self, elements):
+        for element in elements:
+            if element[0] == STOCK:
+                self.add_stock(name=element[1],
+                               equation=element[2])
+            elif element[0] == FLOW:
+                self.add_flow(name=element[1],
+                              equation=element[2],
+                              flow_from=element[3],
+                              flow_to=element[4])
+            elif element[0] == PARAMETER or element[0] == VARIABLE:
+                self.add_aux(element[1], element[2])
+            elif element[0] == CONNECTOR:
+                self.add_connector(element[1], element[3], element[4], angle=element[2])
 
     # Add elements on a stock-and-flow level (work with model file handlers)
     def add_stock(self, name, equation, x=0, y=0, structure_name='default'):
-        self.structures[structure_name].add_element(name, STOCK, value=equation)
+        self.structures[structure_name].add_element(name,
+                                                    STOCK,
+                                                    value=equation)
 
     def add_flow(self, name, equation, x=0, y=0, points=None, flow_from=None, flow_to=None, structure_name='default'):
         # Decide if the 'equation' is a function or a constant number
-        if type(equation[0]) == int or type(equation[0]) == float:  # if equation starts with a number
+        if type(equation[0]) == int or type(equation[0]) == float:
+            # if equation starts with a number
             function = None
             value = equation
         else:
@@ -143,17 +174,26 @@ class Session(object):
         if flow_to is not None:
             self.structures[structure_name].add_causality(name, flow_to)
         if flow_from is not None:
-            self.structures[structure_name].add_causality(name, flow_from)  # TODO: outflow shoud have a -1 somewhere
-        # TODO flow may be used for calculating other variables, so could have other outgoing causal links
+            self.structures[structure_name].add_causality(name, flow_from)
+            # TODO: outflow shoud have a -1 somewhere
+        # TODO flow may be used for calculating other variables,
+        #  so could have other outgoing causal links
 
     def add_aux(self, name, equation, x=0, y=0, structure_name='default'):
         # Decide if this aux is a parameter or variable
-        if type(equation[0]) == int or type(equation[0]) == float: # if equation starts with a number
+        if type(equation[0]) == int or type(equation[0]) == float:
+            # if equation starts with a number
             # It's a parameter
-            self.structures[structure_name].add_element(name, PARAMETER, function=None, value=equation)
+            self.structures[structure_name].add_element(name,
+                                                        PARAMETER,
+                                                        function=None,
+                                                        value=equation)
         else:
             # It's a variable
-            self.structures[structure_name].add_element(name, VARIABLE, function=equation, value=list())
+            self.structures[structure_name].add_element(name,
+                                                        VARIABLE,
+                                                        function=equation,
+                                                        value=list())
 
     def add_connector(self, uid, from_element, to_element, angle=0, structure_name='default'):
         self.structures[structure_name].add_causality(from_element, to_element)
@@ -162,10 +202,14 @@ class Session(object):
         pass
 
     # Simulate a structure based on a certain set of parameters
-    def simulate(self, structure_name='default', simulation_time=13, dt=0.25):
+    def simulate(self,
+                 structure_name='default',
+                 simulation_time=13,
+                 dt=0.25):
         self.simulation_time = simulation_time
         self.dt = dt
-        if simulation_time == 0:  # determine how many steps to run; if not specified, use maximum steps
+        if simulation_time == 0:
+            # determine how many steps to run; if not specified, use maximum steps
             total_steps = self.structures[structure_name].maximum_steps
         else:
             total_steps = int(simulation_time/dt)

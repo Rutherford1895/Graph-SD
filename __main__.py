@@ -89,7 +89,7 @@ class Structure(object):
         affected_stocks = dict()
         for flow in flows_dt.keys():
             successors = list(self.sfd.successors(flow))  # successors of a flow into a list
-            print('Successors of {}: '.format(flow), successors)
+            # print('Successors of {}: '.format(flow), successors)
             for successor in successors:
                 if self.sfd.nodes[successor]['element_type'] == STOCK:  # flow may also affect elements other than stock
                     if successor not in affected_stocks.keys():  # if this flow hasn't been calculated, create a new key
@@ -115,19 +115,53 @@ class Session(object):
 
     # Set the model to a first order negative feedback loop
     def first_order_negative(self, structure_name='default'):
-        self.structures[structure_name].add_element('stock0', STOCK, value=[100])
-        self.structures[structure_name].add_element('flow0', FLOW, function=[DIVISION, 'gap0', 'at0'], value=list())
-        self.structures[structure_name].add_causality('flow0', 'stock0')
+        self.add_stock(name='stock0', equation=[100])
+        self.add_flow(name='flow0', equation=[DIVISION, 'gap0', 'at0'], flow_to='stock0')
+        self.add_aux('goal0', equation=[20])
+        self.add_aux('gap0', equation=[SUBTRACT, 'goal0', 'stock0'])
+        self.add_connector(0, 'stock0', 'gap0')
+        self.add_connector(1, 'goal0', 'gap0')
+        self.add_aux('at0', equation=[5])
+        self.add_connector(2, 'gap0', 'flow0')
+        self.add_connector(3, 'at0', 'flow0')
 
-        self.structures[structure_name].add_element('goal0', PARAMETER, value=[20])
-        self.structures[structure_name].add_element('gap0', VARIABLE, function=[SUBTRACT, 'goal0', 'stock0'], value=list())
-        self.structures[structure_name].add_causality('stock0', 'gap0')
-        self.structures[structure_name].add_causality('goal0', 'gap0')
+    # Add elements on a stock-and-flow level (work with model file handlers)
+    def add_stock(self, name, equation, x=0, y=0, structure_name='default'):
+        self.structures[structure_name].add_element(name, STOCK, value=equation)
 
-        self.structures[structure_name].add_element('at0', PARAMETER, value=[5])
-        self.structures[structure_name].add_causality('gap0', 'flow0')
-        self.structures[structure_name].add_causality('at0', 'flow0')
+    def add_flow(self, name, equation, x=0, y=0, points=None, flow_from=None, flow_to=None, structure_name='default'):
+        # Decide if the 'equation' is a function or a constant number
+        if type(equation[0]) == int or type(equation[0]) == float:  # if equation starts with a number
+            function = None
+            value = equation
+        else:
+            function = equation
+            value = list()
+        self.structures[structure_name].add_element(name, FLOW, function=function, value=value)
 
+        # If the flow influences a stock, create the causal link
+        if flow_to is not None:
+            self.structures[structure_name].add_causality(name, flow_to)
+        if flow_from is not None:
+            self.structures[structure_name].add_causality(name, flow_from)  # TODO: outflow shoud have a -1 somewhere
+        # TODO flow may be used for calculating other variables, so could have other outgoing causal links
+
+    def add_aux(self, name, equation, x=0, y=0, structure_name='default'):
+        # Decide if this aux is a parameter or variable
+        if type(equation[0]) == int or type(equation[0]) == float: # if equation starts with a number
+            # It's a parameter
+            self.structures[structure_name].add_element(name, PARAMETER, function=None, value=equation)
+        else:
+            # It's a variable
+            self.structures[structure_name].add_element(name, VARIABLE, function=equation, value=list())
+
+    def add_connector(self, uid, from_element, to_element, angle=0, structure_name='default'):
+        self.structures[structure_name].add_causality(from_element, to_element)
+
+    def add_alias(self, uid, of_element, x=0, y=0, structure_name='default'):
+        pass
+
+    # Simulate a structure based on a certain set of parameters
     def simulate(self, structure_name='default', simulation_time=13, dt=0.25):
         self.simulation_time = simulation_time
         self.dt = dt

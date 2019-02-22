@@ -1,7 +1,7 @@
 # Graph-SD
 Graph-based system dynamics representation and engine
 
-This repo is now merged to my another project as a package:__
+__This repo is now merged to my another project as a package:__
 
 https://github.com/Rutherford1895/Stock-and-Flow-in-Python/tree/master/Graph-SD
 
